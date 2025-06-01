@@ -13,6 +13,24 @@ extern "C" {
 #endif
     
 static char *keyboardInput = NULL;
+
+UIWindowScene *getMainDeviceWindowScene() {
+    for (UIWindowScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if ([scene isKindOfClass:[UIWindowScene class]]) {
+            if (scene.screen == UIScreen.mainScreen) {
+                return scene;
+            }
+        }
+    }
+    
+    for (UIWindowScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if ([scene isKindOfClass:[UIWindowScene class]]) {
+            return scene;
+        }
+    }
+    
+    return nil;
+}
     
 void showKeyboardAlert(const char *title, const char *message, const char *placeholder) {
     NSString *alertTitle = [NSString stringWithUTF8String:title];
@@ -20,8 +38,8 @@ void showKeyboardAlert(const char *title, const char *message, const char *place
     NSString *alertPlaceholder = [NSString stringWithUTF8String:placeholder];
     
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindowScene *activeScene = (UIWindowScene *)UIApplication.sharedApplication.connectedScenes.allObjects.firstObject;
-        if (!activeScene || ![activeScene isKindOfClass:[UIWindowScene class]]) {
+        UIWindowScene *activeScene = getMainDeviceWindowScene();
+        if (!activeScene) {
             return;
         }
         
@@ -63,7 +81,9 @@ void showKeyboardAlert(const char *title, const char *message, const char *place
         UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"Cancel"
                                                                style:UIAlertActionStyleCancel
                                                              handler:^(UIAlertAction *action) {
-            free(keyboardInput);
+            if (keyboardInput) {
+                free(keyboardInput);
+            }
             keyboardInput = strdup("");
             
             popupWindow.hidden = YES;
@@ -82,8 +102,8 @@ void showAlert(const char *title, const char *message, bool showCancel) {
     NSString *alertMessage = [NSString stringWithUTF8String:message];
     
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindowScene *activeScene = (UIWindowScene *)UIApplication.sharedApplication.connectedScenes.allObjects.firstObject;
-        if (!activeScene || ![activeScene isKindOfClass:[UIWindowScene class]]) {
+        UIWindowScene *activeScene = getMainDeviceWindowScene();
+        if (!activeScene) {
             return;
         }
         
