@@ -11,6 +11,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef void (^SwiftCallback)(NSString *result);
     
 static char *keyboardInput = NULL;
 
@@ -154,6 +156,40 @@ void clearKeyboardInput() {
     if (keyboardInput) {
         free(keyboardInput);
         keyboardInput = NULL;
+    }
+}
+
+static NSMutableDictionary<NSString*, SwiftCallback> *callbackStore;
+
+void RegisterCallback(NSString *identifier, SwiftCallback callback) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        callbackStore = [NSMutableDictionary new];
+    });
+
+    if (identifier && callback) {
+        @synchronized(callbackStore) {
+            callbackStore[identifier] = [callback copy]; // copy blocks
+        }
+    }
+}
+
+void TriggerCallback(const char *cIdentifier) {
+    if (!cIdentifier) return;
+
+    // Convert C string to NSString
+    NSString *identifier = [NSString stringWithUTF8String:cIdentifier];
+    if (!identifier) return;
+
+    SwiftCallback callback = nil;
+    @synchronized(callbackStore) {
+        callback = callbackStore[identifier];
+        if (callback) {
+            [callbackStore removeObjectForKey:identifier]; // optional: remove after call
+        }
+    }
+    if (callback) {
+        callback(identifier);
     }
 }
 
