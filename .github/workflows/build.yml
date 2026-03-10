@@ -1,0 +1,99 @@
+name: Xcode - Build
+
+on: 
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs: 
+      release__nightly:
+        description: Create a nightly release
+        type: boolean
+        required: false
+
+jobs:
+  build:
+    name: Build using xcodebuild command
+    runs-on: macos-latest
+    env:
+      scheme: RyujinxHelper
+      archive_path: archive
+    outputs:
+      scheme: ${{ steps.scheme.outputs.scheme }}
+      archive_path: ${{ env.archive_path }}
+
+    steps:
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.3'
+      - uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0.x'
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+          lfs: true
+      - name: Set Scheme
+        id: scheme
+        run: |
+          if [ $scheme = default ]
+          then
+            scheme_list=$(xcodebuild -list -json | tr -d "\n")
+            scheme=$(echo $scheme_list | ruby -e "require 'json'; puts JSON.parse(STDIN.gets)['project']['targets'][0]")
+            echo Using default scheme: $scheme
+          else
+            echo Using configured scheme: $scheme
+          fi
+          echo "scheme=$scheme" >> $GITHUB_OUTPUT
+      - name: Set filetype_parameter
+        id: filetype_parameter
+        run: |
+          filetype_parameter=`ls -A | grep -i \\.xcworkspace\$ && echo workspace || echo project`
+          echo "filetype_parameter=$filetype_parameter" >> $GITHUB_OUTPUT
+      - name: Set file_to_build
+        id: file_to_build
+        run: |
+          file_to_build=`ls -A | grep -i \\.xcworkspace\$ || ls -A | grep -i \\.xcodeproj\$`
+          file_to_build=`echo $file_to_build | awk '{$1=$1;print}'`
+          echo "file_to_build=$file_to_build" >> $GITHUB_OUTPUT
+      - name: Archive
+        env:
+          scheme: ${{ steps.scheme.outputs.scheme }}
+          filetype_parameter: ${{ steps.filetype_parameter.outputs.filetype_parameter }}
+          file_to_build: ${{ steps.file_to_build.outputs.file_to_build }}
+        run: |
+          echo "=== Build Environment ==="
+          echo "Scheme: $scheme"
+          echo "File type: $filetype_parameter"
+          echo "File to build: $file_to_build"
+          echo "Xcode version: $(xcodebuild -version)"
+          echo "=== Available schemes ==="
+          xcodebuild -list -"$filetype_parameter" "$file_to_build" 2>&1 || true
+          echo "=== Starting archive ==="
+          xcodebuild archive \
+            -archivePath "$archive_path" \
+            -scheme "$scheme" \
+            -destination "generic/platform=iOS" \
+            -"$filetype_parameter" "$file_to_build" \
+            -sdk iphoneos \
+            -configuration Release \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            OTHER_SWIFT_FLAGS="-v" \
+            SWIFT_COMPILATION_MODE=incremental \
+            GCC_GENERATE_DEBUGGING_SYMBOLS=YES \
+            2>&1 | tee build.log | xcpretty --color --report junit --output build_results.xml
+          BUILD_EXIT=${PIPESTATUS[0]}
+          echo "=== Build completed with exit code: $BUILD_EXIT ==="
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "=== Full Build Log (last 200 lines) ==="
+            tail -200 build.log
+          fi
+          exit $BUILD_EXIT
+
+      - name: Upload a Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rhelper
+          path: ../rhelper
