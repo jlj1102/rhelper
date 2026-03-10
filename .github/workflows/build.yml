@@ -95,5 +95,5 @@ jobs:
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rhelper
-          path: ../rhelper
+          name: ${{ env.archive_path }}
+          path: ${{ env.archive_path }}
